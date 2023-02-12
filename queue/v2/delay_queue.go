@@ -2,12 +2,14 @@ package v2
 
 import (
 	"context"
+	"log"
 	"queue_demo"
 	"sync"
 	"time"
 )
 
-// 这是一个 sync.Cond版本的实现，但是未带超时控制
+// 这是一个 sync.Cond版本的实现，此处代码实现不可行
+// 主要时出队等待时，如果新入队了元素，这部分处理的信号不知道如何接收
 
 type Delayable interface {
 	Delay() time.Duration
@@ -54,7 +56,6 @@ func (dq *DelayQueue[T]) Enqueue(ctx context.Context, val T) error {
 		// TODO 这里面加释放锁的时机，是不是需要斟酌一下？
 		switch err {
 		case queue_demo.ErrOutOfCapacity:
-			dq.lock.Unlock()
 			// 这里是等待有元素出队的信号，意味着可以入队了，即等待下一轮循环入队
 			// 使用了sync.Cond做不到超时控制
 			dq.signalEnqueueCond.Wait()
@@ -62,7 +63,6 @@ func (dq *DelayQueue[T]) Enqueue(ctx context.Context, val T) error {
 			// 入队成功就要发一个有元素入队的信号，防止出队阻塞的情况下，能通知到到它**能**出队了
 			// 这里告诉空了的队列，已经有元素可以出队了
 			// 注意这里还得广播，因为deque的时候不止一个地方在等这个信号，一个是出队时，空队列阻塞等待；一个是出队队首元素等待时间比新入队的元素等待时间长
-			dq.lock.Unlock()
 			dq.signalDequeueCond.Broadcast()
 			return nil
 		default:
@@ -87,7 +87,6 @@ func (dq *DelayQueue[T]) Dequeue(ctx context.Context) (T, error) {
 		switch err {
 		// 同上，从优先级队列中获取队首元素，队列为空的情况
 		case queue_demo.ErrEmptyQueue:
-			dq.lock.Unlock()
 			// 接收队列已经入了一个元素的信号，表示这里可以出队，也就是进入下一轮出队循环。
 			dq.signalDequeueCond.Wait()
 		// 从优先级队列中获取队首元素成功，这里需要考虑延时队列等待队首元素出队期间，新加入元素的时间和队首时间的比较情况
@@ -105,14 +104,13 @@ func (dq *DelayQueue[T]) Dequeue(ctx context.Context) (T, error) {
 			// 到时间了，该出队了
 			case <-timer.C:
 				_, err := dq.pq.Dequeue()
-				dq.lock.Unlock()
 				// 这里告诉满了的队列，有元素出队，你可以入队了
-				dq.signalEnqueueCond.Signal()
+				dq.signalEnqueueCond.Broadcast()
 				return val, err
 			// 有新元素入队的情况，如何判断，这个chan会在上面把它取走？
 			// 1. 新入队的元素延迟的时间 < 队首元素延迟的时间，重新计时（退出到外层的for），否则就继续阻塞在这个for中
 			default:
-				dq.lock.Lock()
+				log.Println("...")
 				dq.signalDequeueCond.Wait()
 			}
 			return val, nil

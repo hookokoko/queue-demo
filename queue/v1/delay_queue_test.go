@@ -21,7 +21,7 @@ func ExampleNewDelayQueue() {
 	now := time.Now()
 	_ = q.Enqueue(ctx, delayElem{
 		// 3 秒后过期
-		deadline: now.Add(time.Second * 60),
+		deadline: now.Add(time.Second * 3),
 		val:      3,
 	})
 
@@ -30,6 +30,5 @@ func ExampleNewDelayQueue() {
 	fmt.Println(val.val)
 
 	// Output:
-	// [1 2 3]
-	// delay!
+	// 3
 }

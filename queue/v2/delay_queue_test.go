@@ -156,6 +156,5 @@ func ExampleNewDelayQueue() {
 	fmt.Println(val.val)
 
 	// Output:
-	// [1 2 3]
-	// delay!
+	// 3
 }

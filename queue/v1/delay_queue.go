@@ -64,7 +64,11 @@ func (dq *DelayQueue[T]) Enqueue(ctx context.Context, val T) error {
 		case nil:
 			// 入队成功就要发一个有元素入队的信号，防止出队阻塞的情况下，能通知到到它**能**出队了
 			// 这里告诉空了的队列，已经有元素可以出队了
-			dq.signalDequeue <- struct{}{} // 同理，这里是不是需要一个广播信号
+			select {
+			case dq.signalDequeue <- struct{}{}: // 同理，这里是不是需要一个广播信号
+			default:
+			}
+
 			dq.lock.Unlock()
 			return nil
 		default:
@@ -113,7 +117,10 @@ func (dq *DelayQueue[T]) Dequeue(ctx context.Context) (T, error) {
 				_, err := dq.pq.Dequeue()
 				dq.lock.Unlock()
 				// 这里告诉满了的队列，有元素出队，你可以入队了
-				dq.signalEnqueue <- struct{}{} // fixme 这里是不是需要一个广播信号？
+				select {
+				case dq.signalEnqueue <- struct{}{}:
+				default:
+				} // fixme 这里是不是需要一个广播信号？
 				return val, err
 			// 有新元素入队的情况
 			// 即直接继续下一轮循环，然后重新拿到队首的timer，即可
